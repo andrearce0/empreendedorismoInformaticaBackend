@@ -4,37 +4,29 @@ import { authenticate, authorize } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-/**
- * All routes in this file are protected and require the 'GERENTE' role.
- */
 router.use(authenticate);
+
+router.post('/restaurant', ManagerController.createRestaurant);
+
+router.get('/restaurants', ManagerController.getMyRestaurants);
+
 router.use(authorize(['GERENTE']));
 
-/**
- * RESTAURANT SETTINGS
- */
+//Configuracoes
 router.patch('/:restaurantId/settings', ManagerController.updateSettings);
 
-/**
- * STAFF MANAGEMENT
- */
+//Equipe
 router.post('/:restaurantId/staff', ManagerController.addStaff);
 router.get('/:restaurantId/staff', ManagerController.listStaff);
 
-/**
- * MENU MANAGEMENT
- */
+//Cardapio
 router.post('/:restaurantId/menu', ManagerController.createMenuItem);
 router.get('/:restaurantId/menu', ManagerController.listMenuItems);
 
-/**
- * TABLE MANAGEMENT
- */
+//Mesas
 router.post('/:restaurantId/tables', ManagerController.createTable);
 
-/**
- * ANALYTICS
- */
+//Analytics
 router.get('/:restaurantId/analytics', ManagerController.getAnalytics);
 
 export default router;

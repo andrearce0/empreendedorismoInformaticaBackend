@@ -1,53 +1,224 @@
 import type { Request, Response, NextFunction } from 'express';
 import db from '../services/dbService.js';
+import type { AuthRequest } from '../middleware/authMiddleware.js';
+import bcrypt from 'bcryptjs';
 
-/**
- * Controller for Administrative/Management operations.
- * Most methods expect a restaurantId to be provided, usually verified by middleware.
- */
 export class ManagerController {
 
-    // --- RESTAURANT SETTINGS ---
+    /**
+     * Verifica se o usuario logado é gerente do restaurante informado.
+     */
+    private static async verifyOwnership(userId: number, restaurantId: number) {
+        const result = await db.query(
+            `SELECT 1 FROM funcionarios_restaurante 
+             WHERE id_usuario = $1 AND id_restaurante = $2 AND funcao = 'GERENTE'`,
+            [userId, restaurantId]
+        );
+
+        if (result.rows.length === 0) {
+            throw new Error('Forbidden: Você não tem permissão de gerente para este restaurante.');
+        }
+    }
 
     /**
-     * Update restaurant configuration and policies.
+     * Cria um novo restaurante e define o usuario logado como GERENTE.
      */
-    static async updateSettings(req: Request, res: Response, next: NextFunction) {
-        const client = await db.pool.connect();
+    static async createRestaurant(req: Request, res: Response, next: NextFunction) {
+        console.log('1. Iniciando criacao de restaurante...');
+
+        const {
+            nomeFantasia, razaoSocial, cnpj, descricao, categoria,
+            logradouro, numero, bairro, cidade, estado, cep
+        } = req.body;
+
+        const userId = (req as AuthRequest).user?.id;
+
+        const client = await db.getClient();
+
         try {
             await client.query('BEGIN');
-            const { restaurantId } = req.params;
-            const {
-                tradeName, description, mainCategory,
-                allowsPayBefore, allowsPayAfter, allowsBoth,
-                reserva_mesa_paga, reserva_mesa_gratis,
-                taxa_servico_percentual
-            } = req.body;
+            console.log('2. Transação iniciada.');
 
-            await client.query(
-                `UPDATE restaurantes SET nome_fantasia = $1, descricao = $2, categoria_principal = $3, atualizado_em = NOW()
-                 WHERE id_restaurante = $4`,
-                [tradeName, description, mainCategory, Number(restaurantId)]
+            //inserir informacoes do restaurante
+            const insertRestQuery = `
+                INSERT INTO restaurantes 
+                (nome_fantasia, razao_social, cnpj, descricao, categoria_principal, 
+                 logradouro, numero, bairro, cidade, estado, cep)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                RETURNING id_restaurante, nome_fantasia
+            `;
+
+            const restResult = await client.query(insertRestQuery, [
+                nomeFantasia, razaoSocial, cnpj, descricao, categoria,
+                logradouro, numero, bairro, cidade, estado, cep
+            ]);
+
+            const newRestaurant = restResult.rows[0];
+            console.log('3. Restaurante inserido:', newRestaurant.id_restaurante);
+
+            //vincular usuario como gerente
+            const insertFuncQuery = `
+                INSERT INTO funcionarios_restaurante (id_usuario, id_restaurante, funcao)
+                VALUES ($1, $2, 'GERENTE')
+            `;
+
+            await client.query(insertFuncQuery, [userId, newRestaurant.id_restaurante]);
+            console.log('4. Gerente vinculado.');
+
+            await client.query('COMMIT');
+
+            res.status(201).json({
+                success: true,
+                message: 'Restaurante criado com sucesso!',
+                data: newRestaurant
+            });
+
+        } catch (error: any) {
+            console.error('ERRO na transação:', error);
+            await client.query('ROLLBACK');
+
+            //tratamento de erro de CNPJ duplicado
+            if (error.code === '23505') {
+                return res.status(400).json({ success: false, message: 'Este CNPJ já está cadastrado.' });
+            }
+
+            next(error);
+        } finally {
+            client.release();
+            console.log('5. Conexão liberada.');
+        }
+    }
+
+    static async getMyRestaurants(req: Request, res: Response, next: NextFunction) {
+        try {
+            //buscar o id do usuario do token
+            const userId = (req as AuthRequest).user?.id;
+
+            if (!userId) {
+                return res.status(401).json({ success: false, message: 'Usuário não autenticado.' });
+            }
+
+            const query = `
+                SELECT 
+                    r.id_restaurante, 
+                    r.nome_fantasia, 
+                    r.categoria_principal, 
+                    r.cidade,
+                    fr.funcao  -- É importante retornar a função para o frontend saber se ele é GERENTE ou GARCOM
+                FROM restaurantes r
+                JOIN funcionarios_restaurante fr ON r.id_restaurante = fr.id_restaurante
+                WHERE fr.id_usuario = $1
+                ORDER BY r.criado_em DESC
+            `;
+
+            const result = await db.query(query, [userId]);
+
+            res.json({
+                success: true,
+                count: result.rows.length,
+                data: result.rows
+            });
+
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async updateSettings(req: Request, res: Response, next: NextFunction) {
+        try {
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+            const { nomeFantasia, descricao, categoria, tempoEspera } = req.body;
+            const userId = (req as AuthRequest).user!.id;
+
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
+            //Atualizacao
+            const result = await db.query(
+                `UPDATE restaurantes 
+                 SET nome_fantasia = COALESCE($1, nome_fantasia), 
+                     descricao = COALESCE($2, descricao), 
+                     categoria_principal = COALESCE($3, categoria_principal),
+                     tempo_espera_medio = COALESCE($4, tempo_espera_medio)
+                 WHERE id_restaurante = $5
+                 RETURNING *`,
+                [nomeFantasia, descricao, categoria, tempoEspera, restaurantId]
             );
 
-            await client.query(
-                `UPDATE restaurantes_config_pagamento SET
-                    permite_pagar_antes = $1, permite_pagar_depois = $2, permite_ambos = $3,
-                    reserva_mesa_paga = $4, reserva_mesa_gratis = $5, taxa_servico_percentual = $6
-                 WHERE id_restaurante = $7`,
-                [allowsPayBefore, allowsPayAfter, allowsBoth, reserva_mesa_paga, reserva_mesa_gratis, taxa_servico_percentual, Number(restaurantId)]
+            res.json({ success: true, data: result.rows[0] });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Adiciona funcionario pelo email (Cria conta se não existir).
+     */
+    static async addStaff(req: Request, res: Response, next: NextFunction) {
+        const client = await db.getClient();
+        try {
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+
+            const { nome, email, telefone, funcao, senhaInicial } = req.body;
+
+            const userIdLogado = (req as AuthRequest).user!.id;
+
+            //verificar se o usuario e dono do restaurante
+            await ManagerController.verifyOwnership(userIdLogado, Number(restaurantId));
+
+            if (!['GARCOM', 'COZINHA', 'BAR', 'GERENTE'].includes(funcao)) {
+                return res.status(400).json({ success: false, message: 'Função inválida.' });
+            }
+
+            await client.query('BEGIN');
+
+            let idUsuarioFuncionario: number;
+
+            //verifica se existe um usuario com o email informado
+            const userExists = await client.query('SELECT id_usuario FROM usuarios WHERE email = $1', [email]);
+
+            if (userExists.rows.length > 0) {
+                idUsuarioFuncionario = userExists.rows[0].id_usuario;
+            } else {
+                // Cria usuario novo para o funcionario do restaurante
+                const senhaHash = await bcrypt.hash(senhaInicial || 'Mudar123!', 10);
+
+                const newUser = await client.query(
+                    `INSERT INTO usuarios (nome_completo, email, telefone, senha_hash) 
+                     VALUES ($1, $2, $3, $4) RETURNING id_usuario`,
+                    [nome, email, telefone, senhaHash]
+                );
+                idUsuarioFuncionario = newUser.rows[0].id_usuario;
+
+                //atribui papel de consumidor
+                await client.query(`
+                    INSERT INTO usuarios_papeis (id_usuario, id_papel)
+                    SELECT $1, id_papel FROM papeis WHERE nome = 'CONSUMIDOR'
+                `, [idUsuarioFuncionario]);
+            }
+
+            //verifica se o usuario ja trabalha no restaurante
+            const checkVinculo = await client.query(
+                `SELECT 1 FROM funcionarios_restaurante 
+                 WHERE id_usuario = $1 AND id_restaurante = $2`,
+                [idUsuarioFuncionario, restaurantId]
             );
 
+            if (checkVinculo.rows.length > 0) {
+                throw new Error('Este usuário já faz parte da equipe deste restaurante.');
+            }
+
+            //cria o vinculo
             const result = await client.query(
-                `SELECT r.*, row_to_json(c) as "paymentConfig"
-                 FROM restaurantes r
-                 JOIN restaurantes_config_pagamento c ON r.id_restaurante = c.id_restaurante
-                 WHERE r.id_restaurante = $1`,
-                [Number(restaurantId)]
+                `INSERT INTO funcionarios_restaurante (id_restaurante, id_usuario, funcao)
+                 VALUES ($1, $2, $3)
+                 RETURNING id_funcionario, funcao`,
+                [restaurantId, idUsuarioFuncionario, funcao]
             );
 
             await client.query('COMMIT');
-            res.json({ success: true, data: result.rows[0] });
+
+            res.status(201).json({ success: true, data: result.rows[0] });
+
         } catch (error) {
             await client.query('ROLLBACK');
             next(error);
@@ -56,42 +227,19 @@ export class ManagerController {
         }
     }
 
-    // --- STAFF MANAGEMENT ---
-
-    /**
-     * Add a staff member to the restaurant.
-     */
-    static async addStaff(req: Request, res: Response, next: NextFunction) {
-        try {
-            const { restaurantId } = req.params;
-            const { userId, role } = req.body; // role: GARCOM, GERENTE, COZINHA, BAR
-
-            const result = await db.query(
-                `INSERT INTO funcionarios_restaurante (id_restaurante, id_usuario, funcao)
-                 VALUES ($1, $2, $3)
-                 RETURNING id_funcionario as id, id_restaurante as "restaurantId", id_usuario as "userId", funcao as role`,
-                [Number(restaurantId), Number(userId), role]
-            );
-
-            res.status(201).json({ success: true, data: result.rows[0] });
-        } catch (error) {
-            next(error);
-        }
-    }
-
-    /**
-     * List all staff of a restaurant.
-     */
     static async listStaff(req: Request, res: Response, next: NextFunction) {
         try {
             const { restaurantId } = req.params;
+            const userId = (req as AuthRequest).user!.id;
+
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
             const result = await db.query(
-                `SELECT fr.id_funcionario as id, fr.funcao as role,
-                        json_build_object('id', u.id_usuario, 'fullName', u.nome_completo, 'email', u.email) as user
+                `SELECT fr.id_funcionario, fr.funcao, u.nome_completo, u.email, u.telefone
                  FROM funcionarios_restaurante fr
                  JOIN usuarios u ON fr.id_usuario = u.id_usuario
                  WHERE fr.id_restaurante = $1`,
-                [Number(restaurantId)]
+                [restaurantId]
             );
             res.json({ success: true, data: result.rows });
         } catch (error) {
@@ -99,39 +247,28 @@ export class ManagerController {
         }
     }
 
-    // --- MENU MANAGEMENT ---
-
-    /**
-     * Create a new menu item.
-     */
     static async createMenuItem(req: Request, res: Response, next: NextFunction) {
-        const client = await db.pool.connect();
+        const client = await db.getClient();
         try {
+            // Pega o ID da URL e os dados do Item do Body
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+            const { nome, descricao, preco, categoria, imagemUrl } = req.body;
+
+            const userId = (req as AuthRequest).user!.id;
+
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
             await client.query('BEGIN');
-            const { restaurantId } = req.params;
-            const { name, description, price, ingredients } = req.body;
 
             const itemResult = await client.query(
-                `INSERT INTO cardapio_itens (id_restaurante, nome, descricao, preco)
-                 VALUES ($1, $2, $3, $4)
-                 RETURNING id_item as id, nome, preco`,
-                [Number(restaurantId), name, description, price]
+                `INSERT INTO cardapio_itens (id_restaurante, nome, descricao, preco, categoria, imagem_url, disponivel)
+                 VALUES ($1, $2, $3, $4, $5, $6, true)
+                 RETURNING id_item, nome`,
+                [restaurantId, nome, descricao, preco, categoria, imagemUrl]
             );
 
-            const newItem = itemResult.rows[0];
-
-            if (ingredients && ingredients.length > 0) {
-                for (const ing of ingredients) {
-                    await client.query(
-                        `INSERT INTO cardapio_itens_ingredientes (id_item, id_ingrediente, quantidade, observacoes)
-                         VALUES ($1, $2, $3, $4)`,
-                        [newItem.id, ing.ingredientId, ing.quantity, ing.notes]
-                    );
-                }
-            }
-
             await client.query('COMMIT');
-            res.status(201).json({ success: true, data: newItem });
+            res.status(201).json({ success: true, data: itemResult.rows[0] });
         } catch (error) {
             await client.query('ROLLBACK');
             next(error);
@@ -140,24 +277,13 @@ export class ManagerController {
         }
     }
 
-    /**
-     * List menu items for the restaurant.
-     */
     static async listMenuItems(req: Request, res: Response, next: NextFunction) {
         try {
             const { restaurantId } = req.params;
+
             const result = await db.query(
-                `SELECT mi.id_item as id, mi.nome as name, mi.descricao as description, mi.preco as price,
-                        COALESCE(
-                            (SELECT json_agg(json_build_object('id', mii.id_item_ingrediente, 'quantity', mii.quantidade, 'ingredient', i.*))
-                             FROM cardapio_itens_ingredientes mii
-                             JOIN ingredientes i ON mii.id_ingrediente = i.id_ingrediente
-                             WHERE mii.id_item = mi.id_item),
-                            '[]'
-                        ) as ingredients
-                 FROM cardapio_itens mi
-                 WHERE mi.id_restaurante = $1`,
-                [Number(restaurantId)]
+                `SELECT * FROM cardapio_itens WHERE id_restaurante = $1 ORDER BY categoria, nome`,
+                [restaurantId]
             );
             res.json({ success: true, data: result.rows });
         } catch (error) {
@@ -167,13 +293,13 @@ export class ManagerController {
 
     // --- TABLE MANAGEMENT ---
 
-    /**
-     * Add a physical table to the restaurant.
-     */
     static async createTable(req: Request, res: Response, next: NextFunction) {
         try {
-            const { restaurantId } = req.params;
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
             const { identifier, capacity } = req.body;
+            const userId = (req as AuthRequest).user!.id;
+
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
 
             const result = await db.query(
                 `INSERT INTO mesas (id_restaurante, identificador_mesa, capacidade)
@@ -188,45 +314,27 @@ export class ManagerController {
         }
     }
 
-    /**
-     * Get basic analytics for the restaurant.
-     */
     static async getAnalytics(req: Request, res: Response, next: NextFunction) {
         try {
             const { restaurantId } = req.params;
+            const userId = (req as AuthRequest).user!.id;
 
-            // Top 5 most ordered items
-            const topItemsResult = await db.query(
-                `SELECT pi.id_item as "menuItemId", COUNT(pi.id_pedido_item) as count
-                 FROM pedidos_itens pi
-                 JOIN pedidos p ON pi.id_pedido = p.id_pedido
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
+            const topItems = await db.query(
+                `SELECT ci.nome, COUNT(ip.id_item) as vendas
+                 FROM itens_pedido ip
+                 JOIN cardapio_itens ci ON ip.id_produto = ci.id_item
+                 JOIN pedidos p ON ip.id_pedido = p.id_pedido
                  JOIN sessoes s ON p.id_sessao = s.id_sessao
                  WHERE s.id_restaurante = $1
-                 GROUP BY pi.id_item
-                 ORDER BY count DESC
+                 GROUP BY ci.nome
+                 ORDER BY vendas DESC
                  LIMIT 5`,
-                [Number(restaurantId)]
+                [restaurantId]
             );
 
-            // Busy times (sessions per day of week)
-            const sessionsResult = await db.query(
-                `SELECT criado_em as "createdAt" FROM sessoes WHERE id_restaurante = $1`,
-                [Number(restaurantId)]
-            );
-
-            const dayStats = sessionsResult.rows.reduce((acc: any, s: any) => {
-                const day = new Date(s.createdAt).toLocaleDateString('pt-BR', { weekday: 'long' });
-                acc[day] = (acc[day] || 0) + 1;
-                return acc;
-            }, {});
-
-            res.json({
-                success: true,
-                data: {
-                    topItems: topItemsResult.rows,
-                    busyDays: dayStats
-                }
-            });
+            res.json({ success: true, data: { topItems: topItems.rows } });
         } catch (error) {
             next(error);
         }
