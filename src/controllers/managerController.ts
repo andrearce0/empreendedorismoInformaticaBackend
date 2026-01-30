@@ -28,7 +28,8 @@ export class ManagerController {
 
         const {
             nomeFantasia, razaoSocial, cnpj, descricao, categoria,
-            logradouro, numero, bairro, cidade, estado, cep
+            logradouro, numero, bairro, cidade, estado, cep,
+            latitude, longitude // <--- Adicionado aqui
         } = req.body;
 
         const userId = (req as AuthRequest).user?.id;
@@ -39,24 +40,25 @@ export class ManagerController {
             await client.query('BEGIN');
             console.log('2. Transação iniciada.');
 
-            //inserir informacoes do restaurante
+            // Inserir informacoes do restaurante (Incluindo Lat/Long)
             const insertRestQuery = `
                 INSERT INTO restaurantes 
                 (nome_fantasia, razao_social, cnpj, descricao, categoria_principal, 
-                 logradouro, numero, bairro, cidade, estado, cep)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 logradouro, numero, bairro, cidade, estado, cep, latitude, longitude)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                 RETURNING id_restaurante, nome_fantasia
             `;
 
             const restResult = await client.query(insertRestQuery, [
                 nomeFantasia, razaoSocial, cnpj, descricao, categoria,
-                logradouro, numero, bairro, cidade, estado, cep
+                logradouro, numero, bairro, cidade, estado, cep,
+                latitude || null, longitude || null // <--- Adicionado aqui (envia null se não vier no body)
             ]);
 
             const newRestaurant = restResult.rows[0];
             console.log('3. Restaurante inserido:', newRestaurant.id_restaurante);
 
-            //vincular usuario como gerente
+            // Vincular usuario como gerente
             const insertFuncQuery = `
                 INSERT INTO funcionarios_restaurante (id_usuario, id_restaurante, funcao)
                 VALUES ($1, $2, 'GERENTE')
@@ -77,7 +79,6 @@ export class ManagerController {
             console.error('ERRO na transação:', error);
             await client.query('ROLLBACK');
 
-            //tratamento de erro de CNPJ duplicado
             if (error.code === '23505') {
                 return res.status(400).json({ success: false, message: 'Este CNPJ já está cadastrado.' });
             }
