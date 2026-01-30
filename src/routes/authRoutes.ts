@@ -15,4 +15,10 @@ router.post('/register', AuthController.register);
  */
 router.post('/login', AuthController.login);
 
+/**
+ * POST /api/auth/anonymous
+ * Public route to login as anonymous user.
+ */
+router.post('/anonymous', AuthController.loginAnonymous);
+
 export default router;

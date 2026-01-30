@@ -9,6 +9,8 @@ import userRoutes from './routes/userRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import managerRoutes from './routes/managerRoutes.js';
 import allergenRoutes from './routes/allergenRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
 
 const app: Application = express();
 
@@ -38,6 +40,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/manager', managerRoutes);
 app.use('/api/allergens', allergenRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/sessions', sessionRoutes);
 
 /**
  * Centralized Error Handling

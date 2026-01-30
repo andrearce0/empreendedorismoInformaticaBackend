@@ -339,4 +339,126 @@ export class ManagerController {
             next(error);
         }
     }
+
+    static async createIngredient(req: Request, res: Response, next: NextFunction) {
+        try {
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+
+            // Lemos apenas o que sua tabela pede
+            const { nome, preco, descricao } = req.body;
+
+            const userId = (req as AuthRequest).user!.id;
+
+            // 1. Segurança
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
+            // 2. Insere no Banco
+            const result = await db.query(
+                `INSERT INTO ingredientes (id_restaurante, nome, preco, descricao)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id_ingrediente, nome, preco, descricao`,
+                [
+                    restaurantId,
+                    nome,
+                    preco || 0.00,  // Se não mandar preço, grava 0
+                    descricao || '' // Se não mandar descrição, grava vazio
+                ]
+            );
+
+            res.status(201).json({ success: true, data: result.rows[0] });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Lista todos os ingredientes cadastrados.
+     */
+    static async listIngredients(req: Request, res: Response, next: NextFunction) {
+        try {
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+            const userId = (req as AuthRequest).user!.id;
+
+            // Verifica permissão
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
+            const result = await db.query(
+                `SELECT * FROM ingredientes WHERE id_restaurante = $1 ORDER BY nome`,
+                [restaurantId]
+            );
+
+            res.json({ success: true, data: result.rows });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async addIngredientToItem(req: Request, res: Response, next: NextFunction) {
+        const client = await db.getClient();
+        try {
+            // Pegamos o ID do Restaurante e do Item da URL
+            const restaurantId = req.params.restaurantId || req.body.restaurantId;
+            const itemId = req.params.itemId;
+
+            // Pegamos o ID do Ingrediente e detalhes do Body
+            const { ingredientId, quantidade, observacoes } = req.body;
+
+            const userId = (req as AuthRequest).user!.id;
+
+            // 1. Segurança: Verifica se é gerente
+            await ManagerController.verifyOwnership(userId, Number(restaurantId));
+
+            await client.query('BEGIN');
+
+            // 2. (Opcional mas Recomendado) Verificação de Integridade
+            // Verifica se o Item pertence mesmo a esse restaurante para evitar fraudes
+            const checkItem = await client.query(
+                'SELECT 1 FROM cardapio_itens WHERE id_item = $1 AND id_restaurante = $2',
+                [itemId, restaurantId]
+            );
+
+            if (checkItem.rows.length === 0) {
+                throw new Error('Item não encontrado neste restaurante.');
+            }
+
+            // 3. Insere o Vínculo na tabela cardapio_itens_ingredientes
+            const result = await client.query(
+                `INSERT INTO cardapio_itens_ingredientes (id_item, id_ingrediente, quantidade, observacoes)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id_item_ingrediente, quantidade, observacoes`,
+                [itemId, ingredientId, quantidade, observacoes]
+            );
+
+            await client.query('COMMIT');
+            res.status(201).json({ success: true, data: result.rows[0] });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            next(error);
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * (Opcional) Lista os ingredientes de um item específico
+     */
+    static async getIngredientsByItem(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { itemId } = req.params;
+
+            // Faz um JOIN para trazer o nome do ingrediente junto
+            const result = await db.query(
+                `SELECT cii.id_item_ingrediente, i.nome, cii.quantidade, cii.observacoes, i.preco as custo_extra
+                 FROM cardapio_itens_ingredientes cii
+                 JOIN ingredientes i ON cii.id_ingrediente = i.id_ingrediente
+                 WHERE cii.id_item = $1`,
+                [itemId]
+            );
+
+            res.json({ success: true, data: result.rows });
+        } catch (error) {
+            next(error);
+        }
+    }
 }

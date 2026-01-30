@@ -112,20 +112,63 @@ export class AuthController {
 
     //Permite pedidos sem login
     static async loginAnonymous(req: Request, res: Response, next: NextFunction) {
+        const client = await db.getClient();
         try {
-            const token = jwt.sign(
-                {
-                    id: 0,
-                    email: 'guest',
-                    roles: ['GUEST']
-                },
-                config.jwtSecret,
-                { expiresIn: '4h' }
+            await client.query('BEGIN');
+
+            // 1. Gerar dados fictícios únicos
+            const timestamp = Date.now();
+            const fakeEmail = `guest_${timestamp}@temp.com`;
+            const fakePhone = `999${timestamp.toString().slice(-8)}`; // Ex: 99912345678
+            const fakePass = await bcrypt.hash(`guest_${timestamp}`, 10); // Senha aleatória
+
+            // 2. Criar o usuário "Fantasma" no banco
+            // (Necessário pois a tabela sessoes exige id_usuario_criador)
+            const userResult = await client.query(
+                `INSERT INTO usuarios (nome_completo, email, telefone, senha_hash, ativo)
+                 VALUES ($1, $2, $3, $4, true)
+                 RETURNING id_usuario, nome_completo, email`,
+                ['Cliente Convidado', fakeEmail, fakePhone, fakePass]
             );
 
-            res.json({ success: true, token });
+            const user = userResult.rows[0];
+
+            // 3. Atribuir papel de CONSUMIDOR
+            // Primeiro, precisamos descobrir o ID do papel CONSUMIDOR
+            const roleResult = await client.query(`SELECT id_papel FROM papeis WHERE nome = 'CONSUMIDOR'`);
+
+            if (roleResult.rows.length > 0) {
+                await client.query(
+                    `INSERT INTO usuarios_papeis (id_usuario, id_papel) VALUES ($1, $2)`,
+                    [user.id_usuario, roleResult.rows[0].id_papel]
+                );
+            }
+
+            await client.query('COMMIT');
+
+            // 4. Gerar o Token (O front-end vai guardar isso sem o usuário perceber)
+            const token = jwt.sign(
+                { id: user.id_usuario, email: user.email, roles: ['CONSUMIDOR'] },
+                process.env.JWT_SECRET || 'seusecretoparaassinaturatoken',
+                { expiresIn: '1d' }
+            );
+
+            res.status(201).json({
+                success: true,
+                message: 'Acesso de convidado gerado.',
+                token,
+                user: {
+                    id: user.id_usuario,
+                    nome: user.nome_completo,
+                    guest: true
+                }
+            });
+
         } catch (error) {
+            await client.query('ROLLBACK');
             next(error);
+        } finally {
+            client.release();
         }
     }
 }

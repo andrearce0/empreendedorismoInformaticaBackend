@@ -29,4 +29,11 @@ router.post('/:restaurantId/tables', ManagerController.createTable);
 //Analytics
 router.get('/:restaurantId/analytics', ManagerController.getAnalytics);
 
+
+//Ingredientes
+router.post('/:restaurantId/ingredients', ManagerController.createIngredient);
+router.get('/:restaurantId/ingredients', ManagerController.listIngredients);
+//relacionar ingredientes ao item do cardapio
+router.post('/:restaurantId/menu/:itemId/ingredients', ManagerController.addIngredientToItem);
+router.get('/:restaurantId/menu/:itemId/ingredients', ManagerController.getIngredientsByItem);
 export default router;
