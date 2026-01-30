@@ -6,6 +6,10 @@ dotenv.config();
 const { Pool } = pg;
 
 // Configuração do Pool
+if (!process.env.DATABASE_URL) {
+    console.error('\x1b[31m%s\x1b[0m', '❌ ERROR: DATABASE_URL is not defined in .env file');
+}
+
 // Dica: Para o Supabase em produção, talvez você precise adicionar "ssl: true" aqui futuramente.
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || '',

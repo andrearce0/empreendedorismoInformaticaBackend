@@ -13,7 +13,7 @@ export class RestaurantController {
             const result = await db.query(
                 `SELECT r.id_restaurante as id, r.nome_fantasia as "tradeName", r.razao_social as "companyName",
                         r.cnpj, r.descricao as description, r.categoria_principal as "mainCategory",
-                        r.cidade as city, r.estado as state,
+                        r.cidade as city, r.estado as state, r.latitude, r.longitude,
                         COALESCE(
                             (SELECT json_agg(t) FROM (SELECT id_mesa as id, identificador_mesa as identifier, capacidade FROM mesas WHERE id_restaurante = r.id_restaurante) t),
                             '[]'
@@ -36,6 +36,7 @@ export class RestaurantController {
             const { id } = req.params;
             const result = await db.query(
                 `SELECT r.id_restaurante as id, r.nome_fantasia as "tradeName", r.descricao as description,
+                        r.latitude, r.longitude,
                         COALESCE(
                             (SELECT json_agg(t) FROM (SELECT id_mesa as id, identificador_mesa as identifier, capacidade FROM mesas WHERE id_restaurante = r.id_restaurante) t),
                             '[]'
