@@ -11,6 +11,7 @@ import managerRoutes from './routes/managerRoutes.js';
 import allergenRoutes from './routes/allergenRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import sessionRoutes from './routes/sessionRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 const app: Application = express();
 
@@ -42,6 +43,7 @@ app.use('/api/manager', managerRoutes);
 app.use('/api/allergens', allergenRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/payments', paymentRoutes);
 
 /**
  * Centralized Error Handling

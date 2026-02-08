@@ -32,7 +32,7 @@ Endpoints para registro, login e acesso de convidados.
 | :--- | :--- | :--- | :--- |
 | `POST` | `/register` | Registra um novo usuário (CONSUMIDOR). | `fullName`, `email`, `phone`, `password` |
 | `POST` | `/login` | Realiza login e retorna um JWT. | `email`, `password` |
-| `POST` | `/anonymous` | **(Novo)** Gera um acesso temporário para convidados (Guest). Retorna token. | *Vazio* |
+| `POST` | `/anonymous` | **(Atualizado)** Gera um acesso temporário para convidados. Agora aceita `fullName`. | `fullName` (opcional) |
 
 ---
 
@@ -112,8 +112,9 @@ Endpoints para fechamento de conta e transações financeiras.
 
 | Método | Rota | Descrição | Corpo da Requisição |
 | :--- | :--- | :--- | :--- |
-| `GET` | `/session/:sessionId` | Obtém o extrato/conta da sessão (parcial e total). | - |
-| `POST` | `/` | Registra pagamento. Se o valor total for atingido, fecha a mesa automaticamente. | `idSessao`, `valor`, `metodo` |
+| `GET` | `/session/:sessionId` | Obtém o extrato/conta da sessão (total, pago, restante e itens). | - |
+| `POST` | `/initiate` | **(Novo)** Inicia um pagamento. Se for `CARTAO`, rētens os fundos (Authorize). | `idSessao`, `valor`, `metodo` |
+| `POST` | `/capture/:paymentId` | **(Novo)** Finaliza o pagamento retido (Capture). Fecha sessão se quitado. | - |
 
 ---
 

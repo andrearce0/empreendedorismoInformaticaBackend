@@ -116,6 +116,8 @@ export class AuthController {
         try {
             await client.query('BEGIN');
 
+            const { fullName } = req.body;
+
             // 1. Gerar dados fictícios únicos
             const timestamp = Date.now();
             const fakeEmail = `guest_${timestamp}@temp.com`;
@@ -128,7 +130,7 @@ export class AuthController {
                 `INSERT INTO usuarios (nome_completo, email, telefone, senha_hash, ativo)
                  VALUES ($1, $2, $3, $4, true)
                  RETURNING id_usuario, nome_completo, email`,
-                ['Cliente Convidado', fakeEmail, fakePhone, fakePass]
+                [fullName || 'Cliente Convidado', fakeEmail, fakePhone, fakePass]
             );
 
             const user = userResult.rows[0];
