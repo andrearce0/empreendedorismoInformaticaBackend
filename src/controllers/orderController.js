@@ -9,8 +9,6 @@ export class OrderController {
         const client = await db.getClient();
         try {
             const { sessionId, items } = req.body;
-            // items espera ser um array: [{ idItem: 1, quantity: 2, observation: "Sem cebola" }]
-
             const userId = req.user.id;
 
             if (!items || items.length === 0) {
@@ -39,13 +37,11 @@ export class OrderController {
             );
             const orderId = orderResult.rows[0].id_pedido;
 
-            let valorTotalPedido = 0;
-
             // 3. Processar cada item
             for (const item of items) {
-                // A. Buscar preço real no banco (SEGURANÇA)
+                // A. Buscar preço E CATEGORIA (Importante para a Cozinha)
                 const productRes = await client.query(
-                    'SELECT preco, nome FROM cardapio_itens WHERE id_item = $1 AND id_restaurante = $2',
+                    'SELECT preco, nome, categoria FROM cardapio_itens WHERE id_item = $1 AND id_restaurante = $2',
                     [item.idItem, idRestaurante]
                 );
 
@@ -53,23 +49,32 @@ export class OrderController {
                     throw new Error(`Item ID ${item.idItem} não existe ou não é deste restaurante.`);
                 }
 
-                const precoUnitario = parseFloat(productRes.rows[0].preco);
+                const produto = productRes.rows[0]; // Guardamos o produto para usar categoria depois
+                const precoUnitario = parseFloat(produto.preco);
                 const quantidade = parseInt(item.quantity);
-                const subtotal = precoUnitario * quantidade;
 
-                valorTotalPedido += subtotal;
-
-                // B. Inserir na tabela de itens do pedido (SEM valor_total)
-                await client.query(
+                // B. Inserir na tabela de itens do pedido E GUARDAR O RESULTADO (itemResult)
+                // [AQUI ESTAVA O ERRO]: Precisamos do "const itemResult =" antes do await
+                const itemResult = await client.query(
                     `INSERT INTO pedidos_itens (id_pedido, id_item, quantidade, valor_unitario, observacoes)
-                     VALUES ($1, $2, $3, $4, $5)`,
+                     VALUES ($1, $2, $3, $4, $5)
+                     RETURNING id_pedido_item`,
                     [orderId, item.idItem, quantidade, precoUnitario, item.observation || '']
                 );
-            }
 
-            // 4. (Opcional) Atualizar valor total no pedido se tiver coluna pra isso, 
-            // ou deixar para calcular na hora de fechar a conta.
-            // Por enquanto, vamos retornar o total calculado.
+                // Agora a variável itemResult existe!
+                const idPedidoItem = itemResult.rows[0].id_pedido_item;
+
+                // C. Inserir na Fila de Produção (KDS)
+                // Usamos a categoria que pegamos lá em cima no passo A
+                const setor = produto.categoria || 'GERAL';
+
+                await client.query(
+                    `INSERT INTO cozinha_filas (id_pedido_item, setor, status, criado_em)
+                     VALUES ($1, $2, 'PENDENTE', CURRENT_TIMESTAMP)`,
+                    [idPedidoItem, setor]
+                );
+            }
 
             await client.query('COMMIT');
 
@@ -78,7 +83,6 @@ export class OrderController {
                 message: 'Pedido enviado para a cozinha!',
                 data: {
                     orderId,
-                    total: valorTotalPedido,
                     itemsCount: items.length
                 }
             });

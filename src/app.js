@@ -8,6 +8,7 @@ import sessionRoutes from './routes/sessionRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import managerRoutes from './routes/managerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
+import kitchenRoutes from './routes/kitchenRoutes.js'
 
 const app = express();
 
@@ -34,6 +35,9 @@ app.use('/api', sessionRoutes);
 
 //manager
 app.use('/api/manager', managerRoutes);
+
+//cozinha
+app.use('/api/kitchen', kitchenRoutes);
 
 // Pagamentos -> /api/payments/checkout
 app.use('/api/payments', paymentRoutes);
