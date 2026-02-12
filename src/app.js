@@ -4,9 +4,10 @@ import cors from 'cors';
 // Importação das rotas
 import authRoutes from './routes/authRoutes.js';
 //import restaurantRoutes from './routes/restaurantRoutes.js';
-//import sessionRoutes from './routes/sessionRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import managerRoutes from './routes/managerRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
 
 const app = express();
 
@@ -26,11 +27,10 @@ app.use(express.static('public'));
 // Autenticação -> /api/auth/login, /api/auth/register
 app.use('/api/auth', authRoutes);
 
-// Restaurantes -> /api/restaurants...
-//app.use('/api', restaurantRoutes);
+app.use('/api', orderRoutes);
 
 // Sessões -> /api/sessions... (Ajuste o prefixo se quiser organizar melhor)
-//app.use('/api', sessionRoutes);
+app.use('/api', sessionRoutes);
 
 //manager
 app.use('/api/manager', managerRoutes);

@@ -126,4 +126,73 @@ export class AuthController {
             res.status(500).json({ error: 'Erro interno do servidor.' });
         }
     }
+
+    /**
+     * Gera um acesso de convidado (Cria um usuário temporário no banco).
+     * Usado quando o cliente escaneia o QR Code sem ter conta.
+     */
+    static async loginAnonymous(req, res) {
+        const client = await db.getClient();
+        try {
+            await client.query('BEGIN');
+
+            // 1. Gerar dados fictícios únicos baseados no tempo atual
+            const timestamp = Date.now();
+            const fakeEmail = `guest_${timestamp}@temp.com`;
+            const fakePhone = `999${timestamp.toString().slice(-8)}`; // Ex: 99912345678
+            // Senha aleatória (ninguém vai usar, mas o banco exige)
+            const fakePass = await bcrypt.hash(`guest_${timestamp}`, 10);
+
+            // 2. Criar o usuário "Fantasma" no banco
+            const userResult = await client.query(
+                `INSERT INTO usuarios (nome_completo, email, telefone, senha_hash)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id_usuario, nome_completo, email`,
+                ['Cliente Convidado', fakeEmail, fakePhone, fakePass]
+            );
+
+            const user = userResult.rows[0];
+
+            // 3. Atribuir papel de CONSUMIDOR
+            const roleResult = await client.query("SELECT id_papel FROM papeis WHERE nome = 'CONSUMIDOR'");
+
+            if (roleResult.rows.length > 0) {
+                await client.query(
+                    `INSERT INTO usuarios_papeis (id_usuario, id_papel) VALUES ($1, $2)`,
+                    [user.id_usuario, roleResult.rows[0].id_papel]
+                );
+            }
+
+            await client.query('COMMIT');
+
+            // 4. Gerar o Token (Igual ao login normal)
+            const token = jwt.sign(
+                {
+                    id: user.id_usuario,
+                    email: user.email,
+                    roles: ['CONSUMIDOR']
+                },
+                process.env.JWT_SECRET || 'segredo_padrao_dev',
+                { expiresIn: '1d' }
+            );
+
+            res.status(201).json({
+                success: true,
+                message: 'Acesso de convidado gerado.',
+                token,
+                user: {
+                    id: user.id_usuario,
+                    nome: user.nome_completo,
+                    guest: true // Flag para o front saber que é convidado
+                }
+            });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('Erro no login anônimo:', error);
+            res.status(500).json({ error: 'Erro ao gerar acesso anônimo.' });
+        } finally {
+            client.release();
+        }
+    }
 }
