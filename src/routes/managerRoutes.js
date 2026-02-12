@@ -36,4 +36,7 @@ router.post('/restaurant/:restaurantId/menu/:itemId/ingredients', ManagerControl
 // Ver ingredientes do Item: GET /api/manager/restaurant/:restaurantId/menu/:itemId/ingredients
 router.get('/restaurant/:restaurantId/menu/:itemId/ingredients', ManagerController.getIngredientsByItem);
 
+// Criar Mesa: POST /api/manager/restaurant/:restaurantId/tables
+router.post('/restaurant/:restaurantId/tables', ManagerController.createTable);
+
 export default router;

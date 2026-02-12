@@ -444,4 +444,37 @@ export class ManagerController {
             res.status(500).json({ error: error.message });
         }
     }
+
+    /**
+     * Cria uma nova Mesa no restaurante
+     */
+    static async createTable(req, res) {
+        const client = await db.getClient();
+        try {
+            const { restaurantId } = req.params;
+            const { identifier, capacity } = req.body; // Ex: "Mesa 10", 4 cadeiras
+            const userId = req.user.id;
+
+            await ManagerController.verifyOwnership(userId, restaurantId);
+
+            await client.query('BEGIN');
+
+            const result = await client.query(
+                `INSERT INTO mesas (id_restaurante, identificador_mesa, capacidade)
+                 VALUES ($1, $2, $3)
+                 RETURNING id_mesa as id, identificador_mesa as identifier, capacidade`,
+                [restaurantId, identifier, capacity]
+            );
+
+            await client.query('COMMIT');
+            res.status(201).json({ success: true, data: result.rows[0] });
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            console.error('Erro ao criar mesa:', error);
+            res.status(500).json({ error: error.message });
+        } finally {
+            client.release();
+        }
+    }
 }
