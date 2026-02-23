@@ -15,13 +15,13 @@ Sistema de backend para gestão de restaurantes, pedidos de mesa via QR Code e s
 Todas as rotas (exceto `/auth`) exigem o header:
 `Authorization: Bearer <SEU_TOKEN>`
 
-### 1. Autenticação (`/auth`)
+### 1. Autenticação (`/api/auth`)
 
 | Método | Endpoint | Descrição |
 | --- | --- | --- |
-| `POST` | `/auth/register` | Cria uma nova conta de usuário. |
-| `POST` | `/auth/login` | Login com email e senha. |
-| `POST` | `/auth/anonymous` | Login anônimo (para clientes rápidos). |
+| `POST` | `/api/auth/register` | Cria uma nova conta de usuário. |
+| `POST` | `/api/auth/login` | Login com email e senha. |
+| `POST` | `/api/auth/anonymous` | Login anônimo (para clientes rápidos). |
 
 **Exemplo Body (Register):**
 
@@ -35,18 +35,18 @@ Todas as rotas (exceto `/auth`) exigem o header:
 
 ```
 
-### 2. Gerenciamento (`/manager`)
+### 2. Gerenciamento (`/api/manager`)
 
 *Apenas para Donos e Gerentes.*
 
 | Método | Endpoint | Descrição |
 | --- | --- | --- |
-| `POST` | `/manager/restaurant` | Cadastra um novo restaurante. |
-| `POST` | `/manager/restaurant/:id/tables` | Adiciona mesas ao restaurante. |
-| `POST` | `/manager/restaurant/:id/staff` | Contrata funcionários (Cozinha, Bar, Garçom). |
-| `POST` | `/manager/restaurant/:id/menu` | Adiciona itens ao cardápio. |
-| `POST` | `/manager/restaurant/:id/ingredients` | Cadastra ingredientes no estoque. |
-| `POST` | `/manager/restaurant/:id/menu/:itemId/ingredients` | Vincula ingrediente ao prato (Ficha Técnica). |
+| `POST` | `/api/manager/restaurant` | Cadastra um novo restaurante. |
+| `POST` | `/api/manager/restaurant/:id/tables` | Adiciona mesas ao restaurante. |
+| `POST` | `/api/manager/restaurant/:id/staff` | Contrata funcionários (Cozinha, Bar, Garçom). |
+| `POST` | `/api/manager/restaurant/:id/menu` | Adiciona itens ao cardápio. |
+| `POST` | `/api/manager/restaurant/:id/ingredients` | Cadastra ingredientes no estoque. |
+| `POST` | `/api/manager/restaurant/:id/menu/:itemId/ingredients` | Vincula ingrediente ao prato (Ficha Técnica). |
 
 **Exemplo Body (Menu):**
 
@@ -64,15 +64,22 @@ Todas as rotas (exceto `/auth`) exigem o header:
 
 *Para Clientes na mesa.*
 
+#### **Público (Geral)**
+
+| Método | Endpoint | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/restaurants` | Lista todos os restaurantes ativos. |
+| `GET` | `/api/restaurants/menu/:id` | Busca o cardápio de um restaurante. |
+| `GET` | `/api/alergenos` | Lista todos os alérgenos. |
+
 #### **Abrir Mesa (QR Code)**
 
-`POST /api/sessions/open`
+`POST /api/session/create`
 
 * Cria uma nova sessão ou entra em uma existente.
 
 ```json
 { "idMesa": 1 }
-
 ```
 
 #### **Fazer Pedido**
@@ -97,6 +104,15 @@ Todas as rotas (exceto `/auth`) exigem o header:
 `GET /api/session/:sessionId/orders`
 
 * Lista o histórico de pedidos daquela sessão.
+
+#### **Pagamentos (Split e Checkout)**
+
+| Método | Endpoint | Descrição |
+| --- | --- | --- |
+| `POST` | `/api/create-checkout-session` | Inicia checkout total do carrinho. |
+| `GET` | `/api/session/:id/payment-status` | Verifica status de pagamento da mesa. |
+| `GET` | `/api/session/:id/share-link` | Link para compartilhar conta. |
+| `POST` | `/api/session/:id/create-split-payment` | Checkout de valor parcial. |
 
 ### 4. Cozinha e KDS (`/kitchen`)
 
