@@ -9,6 +9,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import managerRoutes from './routes/managerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import kitchenRoutes from './routes/kitchenRoutes.js'
+import allergenRoutes from './routes/allergenRoutes.js';
 
 const app = express();
 
@@ -24,6 +25,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
 // --- Definição das Rotas (Prefixos) ---
+
+// Alérgenos -> /api/alergenos
+app.use('/api/alergenos', allergenRoutes);
 
 // Autenticação -> /api/auth/login, /api/auth/register
 app.use('/api/auth', authRoutes);
