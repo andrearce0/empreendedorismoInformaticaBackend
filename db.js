@@ -1,0 +1,1 @@
+export { query, getClient } from './src/config/db.js';
