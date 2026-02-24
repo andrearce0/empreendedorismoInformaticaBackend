@@ -9,6 +9,9 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import managerRoutes from './routes/managerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import kitchenRoutes from './routes/kitchenRoutes.js'
+import { PaymentController } from './controllers/paymentController.js';
+import allergenRoutes from './routes/allergenRoutes.js';
+import restaurantRoutes from './routes/restaurantRoutes.js';
 
 const app = express();
 
@@ -25,6 +28,12 @@ app.use(express.static('public'));
 
 // --- Definição das Rotas (Prefixos) ---
 
+// Alérgenos -> /api/alergenos
+app.use('/api/alergenos', allergenRoutes);
+
+// Restaurantes -> /api/restaurants
+app.use('/api/restaurants', restaurantRoutes);
+
 // Autenticação -> /api/auth/login, /api/auth/register
 app.use('/api/auth', authRoutes);
 
@@ -33,8 +42,11 @@ app.use('/api', restaurantRoutes);
 
 app.use('/api', orderRoutes);
 
-// Sessões -> /api/sessions... (Ajuste o prefixo se quiser organizar melhor)
-app.use('/api', sessionRoutes);
+// Sessões -> /api/session...
+app.use('/api/session', sessionRoutes);
+
+// Checkout Principal (Ajustado para o que o Front espera)
+app.post('/api/create-checkout-session', PaymentController.createCheckoutSession);
 
 //manager
 app.use('/api/manager', managerRoutes);
